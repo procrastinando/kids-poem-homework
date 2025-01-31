@@ -17,7 +17,7 @@ LANGUAGE_CODES = {
 }
 
 # Your Groq API Key (Replace this with your actual API key)
-GROQ_API_KEY = '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'
+GROQ_API_KEY = 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 def generate_tts(language, poem_text, line_range):
     """
