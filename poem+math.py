@@ -1,10 +1,38 @@
+import subprocess
+import sys
+
+required_packages = [
+    "groq",
+    "gradio",
+    "gTTS",
+    "requests",
+    "regex",
+    "jieba",
+    "PyYAML"  # PyYAML provides the yaml module
+]
+
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+for package in required_packages:
+    try:
+        # Special handling for PyYAML which is imported as 'yaml'
+        if package == "PyYAML":
+            import yaml
+        else:
+            __import__(package)
+    except ImportError:
+        print(f"Package '{package}' not found. Installing...")
+        install(package)
+
+# Your script's imports
 import gradio as gr
 from gtts import gTTS
 import requests
 import tempfile
 import os
 import difflib
-import regex  # Note the change from 're' to 'regex'
+import regex
 import sys
 import jieba
 import yaml
@@ -19,7 +47,7 @@ LANGUAGE_CODES = {
 }
 
 # Your Groq API Key (Replace this with your actual API key)
-GROQ_API_KEY = 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+GROQ_API_KEY = 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 def generate_tts(language, poem_text, line_range):
     """
@@ -104,51 +132,39 @@ def transcribe_and_score(audio_path, language, poem_text):
         if audio_path is None:
             return "No audio provided.", "0%"
 
-        # Read the audio file in binary mode
-        with open(audio_path, 'rb') as f:
-            audio_data = f.read()
+        # Initialize the Groq client with your API key
+        client = Groq(api_key=GROQ_API_KEY)
 
-        # Set up the headers for authentication
-        headers = {
-            'Authorization': f'Bearer {GROQ_API_KEY}'
-        }
+        # Specify the path to the audio file
+        filename = audio_path  # Replace with your audio file path
 
-        # Define the payload for the API request
-        payload = {
-            'model': 'whisper-large-v3',
-            'language': LANGUAGE_CODES[language]['whisper']
-        }
+        # Open the audio file
+        with open(filename, "rb") as file:
+            # Create a transcription of the audio file
+            transcription_response = client.audio.transcriptions.create(
+                file=(filename, file.read()),  # Required audio file
+                model="whisper-large-v3-turbo",  # Required model to use for transcription
+                language=LANGUAGE_CODES[language]['whisper'],  # Optional
+                response_format="json",  # Optional, default is json
+                temperature=0.0  # Optional
+            )
+            
+            # Extract the transcription text
+            transcription = transcription_response.text.strip()
 
-        # Make the POST request to Groq Whisper API
-        response = requests.post(
-            'https://api.groq.com/openai/v1/audio/transcriptions',
-            headers=headers,
-            files={'file': ('audio.mp3', audio_data, 'audio/mpeg')},
-            data=payload
-        )
+            if not transcription:
+                return "Transcription failed.", "0%"
 
-        # Raise an exception if the request was unsuccessful
-        response.raise_for_status()
+            # Preprocess the strings
+            clean_str1 = preprocess(poem_text, language)
+            clean_str2 = preprocess(transcription, language)
+            # Create a SequenceMatcher object
+            matcher = difflib.SequenceMatcher(None, clean_str1, clean_str2)
+            # Get the similarity ratio and convert to percentage
+            similarity = round((matcher.ratio() * 100)**2, 0)
 
-        # Parse the JSON response to extract the transcription
-        result = response.json()
-        transcription = result.get('text', '').strip()
+            return transcription, f"{similarity}%"
 
-        if not transcription:
-            return "Transcription failed.", "0%"
-
-        # Preprocess the strings
-        clean_str1 = preprocess(poem_text, language)
-        clean_str2 = preprocess(transcription, language)
-        # Create a SequenceMatcher object
-        matcher = difflib.SequenceMatcher(None, clean_str1, clean_str2)
-        # Get the similarity ratio and convert to percentage
-        similarity = round((matcher.ratio() * 100)**2, 0)
-
-        return transcription, f"{similarity}%"
-
-    except requests.exceptions.HTTPError as http_err:
-        return f"HTTP error occurred: {http_err}", "0%"
     except Exception as e:
         return f"An error occurred: {e}", "0%"
 
@@ -177,7 +193,7 @@ def generate_question():
     return f"{num1} {operation} {num2}", answer
 
 def open_config():
-    if not os.path.exists("config_homework.yaml"):
+    if not os.path.exists("/root/config_homework.yaml"):
         current_question, correct_answer = generate_question()
         default_config = {
             "correct_increment": 1,
@@ -187,13 +203,13 @@ def open_config():
             "correct_answer": correct_answer,
             "user_points": 0
         }
-        with open("config_homework.yaml", "w") as file:
+        with open("/root/config_homework.yaml", "w") as file:
             yaml.dump(default_config, file)
-    with open("config_homework.yaml", "r") as file:
+    with open("/root/config_homework.yaml", "r") as file:
         return yaml.safe_load(file)
 
 def save_config(config):
-    with open("config_homework.yaml", "w") as file:
+    with open("/root/config_homework.yaml", "w") as file:
         yaml.dump(config, file)
 
 def process_input(user_input):
@@ -389,8 +405,8 @@ def main():
             )
 
     # Launch the Gradio app
-    demo.launch(server_name="0.0.0.0", server_port=666)
-    # demo.launch()
+    # demo.launch(server_name="0.0.0.0", server_port=666)
+    demo.launch()
 
 if __name__ == "__main__":
     main()
